@@ -1,0 +1,4 @@
+product_code,product_name,rate_pa,policy_version,policy_file,effective_from
+PL,Unsecured Personal Loan (Salaried),16.00,PL-2026.10,PL_personal_loan_policy.md,2026-10-01
+MSME_RF,MSME Working Capital Loan against Trade Receivables,14.00,MSME_RF-2026.10,MSME_RF_receivables_policy.md,2026-10-01
+TW,New Two-Wheeler Loan,13.00,TW-2026.10,TW_two_wheeler_policy.md,2026-10-01

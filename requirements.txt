@@ -1,0 +1,10 @@
+# Core
+laya>=0.4.0                 # Laya decision engine (pulls torch, transformers, huggingface_hub)
+psycopg[binary]>=3.2        # PostgreSQL driver
+pgvector>=0.3               # pgvector adapter for psycopg
+python-dotenv>=1.0
+numpy>=1.26
+scikit-learn>=1.4           # offline hashing embedder for policy RAG
+# Optional semantic embeddings:  pip install sentence-transformers
+# Dev / CI
+pytest>=8.0

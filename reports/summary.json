@@ -1,0 +1,113 @@
+{
+  "generated_at": "2026-10-07T16:20:15+00:00",
+  "run": {
+    "backend": "mock",
+    "backend_version": "mock-1.0",
+    "checkpoint": "mock-heuristic",
+    "laya_revision": "UNPINNED",
+    "model_registry_id": 1,
+    "min_confidence": 0.7,
+    "embedding": "hashing",
+    "rag_top_k": 5,
+    "policy_versions": [
+      "MSME_RF-2026.10",
+      "PL-2026.10",
+      "TW-2026.10"
+    ],
+    "host": "Linux x86_64 / Python 3.13.16"
+  },
+  "totals": {
+    "cases": 20,
+    "passed": 20,
+    "failed": 0
+  },
+  "by_product": {
+    "PL": {
+      "total": 10,
+      "passed": 10
+    },
+    "MSME_RF": {
+      "total": 5,
+      "passed": 5
+    },
+    "TW": {
+      "total": 5,
+      "passed": 5
+    }
+  },
+  "decision_confusion": {
+    "APPROVE": {
+      "APPROVE": 5
+    },
+    "DECLINE": {
+      "DECLINE": 5
+    },
+    "REFER": {
+      "REFER": 10
+    }
+  },
+  "question_accuracy": {
+    "adverse_conduct": {
+      "correct": 2,
+      "total": 2
+    },
+    "debtor_quality": {
+      "correct": 2,
+      "total": 2
+    },
+    "early_warning": {
+      "correct": 1,
+      "total": 1
+    },
+    "invoice_quality_issue": {
+      "correct": 1,
+      "total": 1
+    },
+    "manipulation_attempt": {
+      "correct": 2,
+      "total": 2
+    },
+    "name_lender_risk": {
+      "correct": 3,
+      "total": 3
+    },
+    "purpose_prohibited": {
+      "correct": 3,
+      "total": 3
+    },
+    "usage_type": {
+      "correct": 1,
+      "total": 1
+    }
+  },
+  "abstentions": 1,
+  "latency_ms": {
+    "rules": {
+      "p50": 0.47,
+      "p95": 1.72,
+      "max": 3.54
+    },
+    "rag": {
+      "p50": 3.96,
+      "p95": 5.76,
+      "max": 18.97
+    },
+    "model": {
+      "p50": 0.23,
+      "p95": 0.25,
+      "max": 0.27
+    },
+    "total": {
+      "p50": 4.67,
+      "p95": 6.87,
+      "max": 22.78
+    }
+  },
+  "audit_chain": {
+    "valid": true,
+    "rows": 20,
+    "head_hash": "8840c9e4f2944e1f2e2fe6e6bbac9f9c7a30111b843a5d1925bec4b4612705a4"
+  },
+  "pii_leak_findings": [],
+  "invariants_held": true
+}

@@ -1,0 +1,31 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_DB: laya_credit, POSTGRES_USER: laya, POSTGRES_PASSWORD: ci_only }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U laya" --health-interval 5s --health-retries 10
+    env:
+      PG_HOST: localhost
+      PG_PASSWORD: ci_only
+      DECISION_BACKEND: mock          # CI has no model weights; real Laya runs are local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements-ci.txt
+      - name: Unit tests
+        run: pytest -q tests/unit
+      - name: SAST (bandit)
+        run: bandit -q -r src scripts -ll
+      - name: Dependency vulnerabilities (pip-audit)
+        run: pip-audit -r requirements-ci.txt
+      - name: Pipeline + governance tests
+        run: |
+          python scripts/01_create_dummy_data.py --applicants 20
+          python scripts/03_run_tests.py --fail-under 100
