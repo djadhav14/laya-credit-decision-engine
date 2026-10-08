@@ -47,14 +47,23 @@ def main() -> None:
         old.unlink()
 
     engine, conn = build_engine(settings)
-    runs, audit_ids = [], []
+    runs, errors, audit_ids = [], [], []
     try:
         for path in cases:
             doc = json.loads(path.read_text(encoding="utf-8"))
             meta, request = doc["meta"], doc["request"]
-            result = engine.decide(request).to_dict()
+            try:
+                result = engine.decide(request).to_dict()
+            except Exception as exc:  # one broken case must not abort the suite
+                conn.rollback()
+                msg = f"{type(exc).__name__}: {str(exc).splitlines()[0][:300]}"
+                errors.append({"meta": meta, "error": msg})
+                (results_dir / f"{meta['test_id']}.json").write_text(
+                    json.dumps({"meta": meta, "error": msg}, indent=2, ensure_ascii=False) + "\n")
+                print(f"[ERROR] {meta['test_id']:<31} {msg}")
+                continue
             evaluation = evaluate_case(meta, result)
-            run = {"meta": meta, "questions": request["questions"], "result": result, "evaluation": evaluation}
+            run = {"meta": meta, "result": result, "evaluation": evaluation}
             runs.append(run)
             audit_ids.append(result["audit"]["audit_id"])
             (results_dir / f"{meta['test_id']}.json").write_text(
@@ -69,10 +78,12 @@ def main() -> None:
             cur.execute("SELECT redacted_state, model_answers FROM decision_audit WHERE audit_id = ANY(%s)",
                         (audit_ids,))
             stored = list(cur.fetchall())
-        pii = find_pii(stored) + find_pii([r["result"]["model_input"] for r in runs])
+        pii = find_pii(stored) + find_pii([r["result"]["model_input"]["state"] for r in runs])
     finally:
         conn.close()
 
+    if not runs:
+        sys.exit("Every test case errored; see reports/results/*.json")
     first = runs[0]["result"]
     run_meta = {
         "backend": first["backend"], "backend_version": first["backend_version"],
@@ -82,7 +93,7 @@ def main() -> None:
         "policy_versions": sorted({r["result"]["policy_version"] for r in runs}),
         "host": f"{platform.system()} {platform.machine()} / Python {platform.python_version()}",
     }
-    summary = build_summary(runs, run_meta, chain, sorted(set(pii)))
+    summary = build_summary(runs, run_meta, chain, sorted(set(pii)), errors)
     rd = settings.reports_dir
     (rd / "summary.json").write_text(json.dumps(summary, indent=2, default=str) + "\n")
     (rd / "consolidated_report.md").write_text(render_markdown(summary, runs), encoding="utf-8")
@@ -92,7 +103,7 @@ def main() -> None:
 
     t = summary["totals"]
     rate = 100.0 * t["passed"] / t["cases"]
-    print(f"\n{t['passed']}/{t['cases']} passed ({rate:.1f}%). Audit chain valid={chain['valid']}. "
+    print(f"\n{t['passed']}/{t['cases']} passed ({rate:.1f}%), {t['errors']} errored. Audit chain valid={chain['valid']}. "
           f"PII findings={len(summary['pii_leak_findings'])}.")
     print(f"Report: {rd / 'consolidated_report.md'}")
     if args.fail_under is not None and rate < args.fail_under:

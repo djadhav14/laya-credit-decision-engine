@@ -14,7 +14,7 @@ request {state,questions}   │           │               │                 
 DecisionEngine.decide ──► PolicyRepository   ModelRegistry.require        AuditTrail.append
    │   (rules, questions, product for the CURRENT policy version)   (APPROVED + pinned revision)
    ├─► features.build_features  → RulesEngine.evaluate  (whitelisted operators, no eval)
-   ├─► PolicyStore.retrieve     (product + version filtered cosine search; anchor clause per question)
+   ├─► grounded_questions       (anchor clause per question, pgvector fallback; clause -> noul "true" option)
    ├─► redaction.redact         (PAN, Aadhaar, mobile, e-mail, account numbers, sensitive keys)
    ├─► DecisionBackend.predict  (LayaBackend → laya.Router  |  MockBackend for CI)
    └─► combine: DECLINE > REFER > APPROVE, per-question confidence gate → DecisionResult
@@ -39,7 +39,7 @@ DecisionEngine.decide ──► PolicyRepository   ModelRegistry.require        
 | No hallucinated output | Laya returns probabilities over options you define; there is no free text to invent | `model_signals[*].answer` in every result |
 | Explainable adverse action | Declines come only from matrix rules carrying `clause_ref` and `reason_code` | `rule_hits`, PL-7.1 / RF-6.1 / TW-6.1 |
 | Human in the loop | Model may only REFER; low-confidence answers abstain to REFER | invariant checks in every report |
-| Grounding in the right policy | RAG hard-filtered to product **and** policy version; retrieved clause refs stored per decision | `retrieved_clauses` |
+| Grounding in the right policy | Each question carries its governing clause, looked up by product **and** policy version (pgvector fallback); clause refs stored per decision | `retrieved_clauses` |
 | Data localisation / no egress | Model, vectors and data run on your infrastructure; `HF_HUB_OFFLINE=1` after first download | `.env.example` |
 | Data minimisation (DPDP) | PII redacted before inference and before audit storage | `PL_09`, report "PII findings" |
 | Prompt-injection resistance | Injection is a typed question, not an instruction channel; flagged cases go to RCU | `PL_05` |
@@ -48,6 +48,12 @@ DecisionEngine.decide ──► PolicyRepository   ModelRegistry.require        
 | Tamper-evident audit | Append-only trigger + SHA-256 hash chain; `--verify-audit` | `decision_audit.prev_hash/row_hash` |
 | Regression / eval gate | `03_run_tests.py --fail-under`, `laya-evals` dataset export, CI workflow | `.github/workflows/ci.yml` |
 | Secure SDLC | bandit (SAST) + pip-audit (SCA) in CI; no `eval`; parameterised SQL only | CI |
+
+## Lesson from the first real Laya run: ground the question, not the evidence
+
+The first version appended the retrieved policy clauses to the state as `policy_excerpt`, the usual RAG pattern for a generative LLM. With Laya this backfired: clause PL-6.2 *lists* "EMI bounces, gambling-app transactions, unexplained cash deposits", and an encoder that reads the whole state scored those words as evidence, flagging clean applications for adverse conduct (and RF-5.1 did the same for "early warning").
+
+The fix: policy goes into the **question**. For each yes/no question the version-pinned clause becomes the description of the `true` option, and the state carries applicant evidence only. A generative model can be told "this is reference text, not evidence"; a System-1 classifier needs that separation done structurally.
 
 ## Known limits and next steps for a production build
 

@@ -15,7 +15,7 @@ This prototype tests a different pattern. **Laya** — an Apache-2.0 open-weight
 | Layer | Technology | Decides |
 |---|---|---|
 | **Decision matrix** | PostgreSQL rows (50 rules, versioned, clause-referenced) | Hard **DECLINE** and band **REFER** on structured data (bureau, FOIR, LTV, DSCR ...) |
-| **Policy knowledge** | pgvector, clause-level chunks | *Which* policy text grounds each model question |
+| **Policy knowledge** | pgvector, clause-level chunks | The clause that defines each model question (policy goes into the question, never into the evidence) |
 | **Typed decisions** | Laya (local), confidence-gated | Narrative risk: prohibited purpose, adverse conduct, name-lending, prompt injection, debtor quality ... → can only **REFER** |
 | **Governance** | Model registry, PII redaction, hash-chained audit trail | Who served the decision, on what evidence, provably unaltered |
 
@@ -24,7 +24,7 @@ This prototype tests a different pattern. **Laya** — an Apache-2.0 open-weight
 ```
 application JSON ──► features (EMI, FOIR, LTV, age@maturity) ──► decision-matrix rules ──┐
         │                                                                                ├─► DECLINE > REFER > APPROVE ─► hash-chained audit
-        └─► PII redaction ─► policy RAG (pgvector, same product+version only) ─► Laya ───┘        (+ per-question confidence gate)
+        └─► PII redaction ─► Laya ◄── questions grounded in policy clauses (pgvector) ──┘        (+ per-question confidence gate)
 ```
 
 ## What is in the repo
@@ -79,7 +79,14 @@ The first Laya call downloads the checkpoint from Hugging Face. After that, set 
 
 ## About the reports committed here
 
-> **The reports in `reports/` were generated with `DECISION_BACKEND=mock`** — a deterministic keyword stand-in used where the Laya weights could not be downloaded. They prove the plumbing (rules, RAG, gating, redaction, audit chain, report) and **say "MOCK BACKEND" at the top**. The mock was written alongside these test cases, so its 20/20 is not evidence of model accuracy. **Run `python scripts/03_run_tests.py` with `DECISION_BACKEND=laya` and commit those reports** before quoting any model result.
+The reports in `reports/` come from a **real local Laya run** (Laya 0.4.0, revision `7b928d8`, CPU): **15 of 20 cases passed**. They are committed unedited, failures included.
+
+- **Governance layer: 20/20.** Every decline and rule-driven referral correct; invariants held; no PII in the audit trail; hash chain valid.
+- **Model layer: 5 failures.** Two confident misses (prohibited purpose, name-lender) that the 0.70 confidence gate did not catch; one missing control (no question covers vague purpose, PL-5.3); two over-cautious flags (MSME `early_warning` flags every file; a Hindi statement flagged as manipulation).
+
+These are the cases the next iteration targets: question redesign first, then calibration and fine-tuning on a growing labelled set (`reports/laya_eval_dataset.jsonl`), with this suite as the release gate. A 20-case hand-built suite is a regression harness, not an accuracy benchmark.
+
+`DECISION_BACKEND=mock` (a keyword stand-in) exists for CI without model weights; reports produced with it carry a "MOCK BACKEND" banner.
 
 ## What the test suite demonstrates
 

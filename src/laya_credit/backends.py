@@ -34,6 +34,18 @@ class LayaBackend:
         # default="english": Laya 0.4 routes undetected text to multilingual by default;
         # credit applications here are English, so we pin and record the checkpoint explicitly.
         self.router = Router(device=device, revision=revision, default="english")
+        # Load every checkpoint this run can route to NOW, so a missing checkpoint fails at
+        # start-up with a clear message instead of in the middle of a batch.
+        needed = ["english", "multilingual"] if checkpoint == "auto" else [checkpoint]
+        try:
+            self.router.preload(needed)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not load Laya checkpoint(s) {needed} (revision={revision or 'latest'}). "
+                "If HF_HUB_OFFLINE=1 is set, a checkpoint is missing from the local cache: unset it "
+                "once and run  python -I -c \"from laya import Router; Router(revision='"
+                f"{revision or ''}' or None).preload({needed})\"  then re-enable offline mode. "
+                f"Underlying error: {type(exc).__name__}: {exc}") from exc
 
     def predict(self, state: Any, questions: Dict[str, Any], min_confidence: float) -> Dict[str, Any]:
         kwargs: Dict[str, Any] = {"min_confidence": min_confidence}

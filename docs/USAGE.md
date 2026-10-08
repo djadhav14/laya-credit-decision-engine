@@ -133,7 +133,7 @@ jq '.request' tests/cases/PL_04_prohibited_purpose.json | curl -s localhost:8000
      -H 'content-type: application/json' -d @- | jq '.answers'
 ```
 
-(Sent that way, Laya sees the raw state without the engine's redaction, policy RAG and rules — useful to compare.)
+(Sent that way, Laya sees the same questions but the raw state without the engine's PII redaction and rules — useful to compare.)
 
 ## Structured fields per product
 
@@ -143,7 +143,9 @@ jq '.request' tests/cases/PL_04_prohibited_purpose.json | curl -s localhost:8000
 | `MSME_RF` Receivables | `udyam_registered, gst_registered, business_vintage_months, annual_turnover, gst_filing_gaps_6m, promoter_bureau_score, cmr_rank, dscr, sma2_npa_12m, receivables_over_90d_pct, eligible_receivables, facility_amount, top_debtor_concentration, related_party_receivables_pct` | advance rate |
 | `TW` Two-wheeler | `application_date, dob, net_monthly_income, existing_emi, on_road_price, loan_amount, tenure_months, bureau_score, max_dpd_12m, residence_months, owns_residence, dealer_empanelled, vehicle_condition` | age, age at maturity, EMI @13%, FOIR, LTV, NTC flag |
 
-Narrative fields (`applicant_statement`, `bureau_remarks`, `bank_statement_summary`, `verification_notes`, `debtor_profile`) are what Laya reads, after PII redaction and with the retrieved policy clauses appended as `policy_excerpt`.
+Narrative fields (`applicant_statement`, `bureau_remarks`, `bank_statement_summary`, `verification_notes`, `debtor_profile`) are what Laya reads, after PII redaction. **Policy text is not added to the state.** It goes into the questions: for every yes/no question the governing clause becomes the description of the `true` option (see `request.questions` in any test file).
+
+The engine always asks the approved, versioned question bank; `questions` inside a request file are written for reference and for posting to `laya-serve`, and are ignored by the engine so a caller cannot change what the model is asked.
 
 ## The 20 cases
 

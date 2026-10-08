@@ -123,25 +123,38 @@ class DecisionEngine:
         self.registry = ModelRegistry(conn)
 
     # ------------------------------------------------------------------ RAG
-    def _policy_context(self, product_code: str, pv: str, bank: Dict[str, dict]) -> List[dict]:
-        """Each question pulls its own anchor clause plus its nearest semantic neighbour,
-        de-duplicated and capped at RAG_TOP_K so the state stays inside Laya's window."""
-        seen, clauses = set(), []
-        for q in bank.values():
-            candidates = []
-            if q.get("clause_ref"):
-                anchor = self.store.get_clause(product_code, pv, q["clause_ref"])
-                if anchor:
-                    candidates.append(anchor)
-            candidates += self.store.retrieve(product_code, pv, q["rag_query"], k=1)
-            for c in candidates:
-                if c["clause_ref"] not in seen:
-                    seen.add(c["clause_ref"])
-                    clauses.append({"clause_ref": c["clause_ref"], "content": c["content"],
-                                    "similarity": round(float(c["similarity"]), 4)})
-        priority = {q["clause_ref"] for q in bank.values() if q.get("clause_ref")}
-        clauses.sort(key=lambda c: (c["clause_ref"] not in priority, -c["similarity"]))
-        return clauses[: max(self.settings.rag_top_k, 1)]
+    def grounded_questions(self, product_code: str, pv: str,
+                           bank: Dict[str, dict]) -> tuple[Dict[str, dict], List[dict]]:
+        """Ground each typed question in the policy, and return the clauses used.
+
+        Design note (learned from real Laya runs): policy text is put into the QUESTION, never
+        into the evidence. Laya is an encoder that reads the state and scores options; when the
+        retrieved clause sat inside the state, its own words ("bounces", "gambling", "early
+        warning") were read as evidence and clean applications were flagged. So for every yes/no
+        question the governing clause becomes the definition of the "true" option, and the state
+        carries only applicant evidence.
+
+        Clause selection: the question's anchor clause (exact, version-pinned lookup); if a
+        question has none, the nearest clause by pgvector similarity on its ``rag_query``.
+        """
+        questions = self.repo.to_laya_questions(bank)
+        clauses: List[dict] = []
+        for qid, q in bank.items():
+            clause = self.store.get_clause(product_code, pv, q["clause_ref"]) if q.get("clause_ref") else None
+            if clause is None:
+                hits = self.store.retrieve(product_code, pv, q["rag_query"], k=1)
+                clause = hits[0] if hits else None
+            if clause is None:
+                continue
+            clauses.append({"qid": qid, "clause_ref": clause["clause_ref"], "content": clause["content"],
+                            "similarity": round(float(clause["similarity"]), 4)})
+            if q["qtype"] == "noul" and q["criteria"] is None:
+                definition = clause["content"].split(" ", 1)[1]          # drop the "PL-5.2" prefix
+                questions[qid]["criteria"] = {
+                    "false": "no evidence of this in the application",
+                    "true": definition,
+                }
+        return questions, clauses
 
     # ------------------------------------------------------------ decision
     def decide(self, request: Dict[str, Any], *, write_audit: bool = True) -> DecisionResult:
@@ -161,14 +174,14 @@ class DecisionEngine:
         rule_hits = RulesEngine(bundle["rules"]).evaluate(features)
         t_rules = time.perf_counter()
 
-        # 2. Ground the model in retrieved policy text
-        clauses = self._policy_context(product_code, pv, bank)
+        # 2. Ground every typed question in its governing policy clause (versioned)
+        #    The question set always comes from the approved bank; questions supplied in the
+        #    request are ignored so a caller cannot change what the model is asked.
+        questions, clauses = self.grounded_questions(product_code, pv, bank)
         t_rag = time.perf_counter()
 
-        # 3. Laya typed decisions over the (PII-redacted) narrative evidence
-        questions = request.get("questions") or self.repo.to_laya_questions(bank)
+        # 3. Laya typed decisions over the (PII-redacted) applicant evidence only
         model_state = {k: state[k] for k in NARRATIVE_FIELDS if state.get(k)}
-        model_state["policy_excerpt"] = " ".join(c["content"] for c in clauses)
         if self.settings.redact_pii:
             model_state = redact(model_state)
         raw = self.backend.predict(model_state, questions, self.settings.min_confidence)
@@ -180,7 +193,7 @@ class DecisionEngine:
             meta = bank.get(qid, {})
             abstained = bool(ans.get("low_confidence")) or ans.get("abstention") == "abstained"
             flagged = bool(meta.get("refer_when")) and _check(meta["refer_when"], ans)
-            gated = abstained and bool(meta.get("refer_when"))
+            gated = abstained and bool(meta.get("gate_on_low_confidence", True)) and not flagged
             signals.append(ModelSignal(qid, ans, flagged or gated,
                                        meta.get("reason_code") if flagged else
                                        (f"MODEL_LOW_CONFIDENCE:{qid}" if gated else None),
@@ -214,7 +227,7 @@ class DecisionEngine:
                         "rag": round((t_rag - t_rules) * 1000, 2),
                         "model": round((t_model - t_rag) * 1000, 2),
                         "total": round((t_end - t0) * 1000, 2)},
-            model_input=model_state)
+            model_input={"state": model_state, "questions": questions})
 
         if write_audit:
             result.audit = self.audit.append({

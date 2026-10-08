@@ -56,8 +56,27 @@ def _p(values: List[float], q: float) -> float:
     return v[min(len(v) - 1, int(round(q * (len(v) - 1))))]
 
 
+def question_diagnostics(runs: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Per typed question: how confident the model was, how often the gate withheld it, and how
+    often it raised a flag. This is the table to read first when tuning or fine-tuning."""
+    acc: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"n": 0, "conf": [], "abstained": 0, "flagged": 0})
+    for r in runs:
+        for s in r["result"]["model_signals"]:
+            d = acc[s["qid"]]
+            d["n"] += 1
+            c = s["answer"].get("answer_confidence")
+            if c is not None:
+                d["conf"].append(float(c))
+            d["abstained"] += int(s["abstained"])
+            d["flagged"] += int(bool(s["referred"]) and not str(s.get("reason_code") or "").startswith("MODEL_LOW"))
+    return {q: {"n": d["n"], "mean_confidence": round(statistics.mean(d["conf"]), 3) if d["conf"] else None,
+                "min_confidence": round(min(d["conf"]), 3) if d["conf"] else None,
+                "abstained": d["abstained"], "flagged": d["flagged"]} for q, d in sorted(acc.items())}
+
+
 def build_summary(runs: List[Dict[str, Any]], run_meta: Dict[str, Any], audit_check: Dict[str, Any],
-                  redaction_findings: List[str]) -> Dict[str, Any]:
+                  redaction_findings: List[str], errors: List[Dict[str, Any]] | None = None) -> Dict[str, Any]:
+    errors = errors or []
     by_product: Dict[str, Counter] = defaultdict(Counter)
     q_total, q_ok = Counter(), Counter()
     abstained = 0
@@ -75,11 +94,17 @@ def build_summary(runs: List[Dict[str, Any]], run_meta: Dict[str, Any], audit_ch
         abstained += sum(1 for s in res["model_signals"] if s["abstained"])
         for k, v in res["latency_ms"].items():
             lat[k].append(v)
+    for e in errors:
+        by_product[e["meta"]["product_code"]]["total"] += 1
+        confusion[e["meta"]["expected_decision"]]["ERROR"] += 1
     passed = sum(1 for r in runs if r["evaluation"]["passed"])
+    total = len(runs) + len(errors)
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "run": run_meta,
-        "totals": {"cases": len(runs), "passed": passed, "failed": len(runs) - passed},
+        "totals": {"cases": total, "passed": passed, "failed": len(runs) - passed, "errors": len(errors)},
+        "errors": [{"test_id": e["meta"]["test_id"], "error": e["error"]} for e in errors],
+        "question_diagnostics": question_diagnostics(runs),
         "by_product": {k: dict(v) for k, v in by_product.items()},
         "decision_confusion": {k: dict(v) for k, v in confusion.items()},
         "question_accuracy": {q: {"correct": q_ok[q], "total": q_total[q]} for q in sorted(q_total)},
@@ -113,7 +138,10 @@ def render_markdown(summary: Dict[str, Any], runs: List[Dict[str, Any]]) -> str:
     L.append(f"| generated_at (UTC) | `{summary['generated_at']}` |\n")
 
     L.append("## 2. Executive summary\n")
-    L.append(f"- **{tot['passed']} of {tot['cases']} test cases passed** ({_pct(tot['passed'], tot['cases'])}).")
+    L.append(f"- **{tot['passed']} of {tot['cases']} test cases passed** ({_pct(tot['passed'], tot['cases'])}); "
+             f"{tot['failed']} failed, {tot['errors']} could not run.")
+    for e in summary["errors"]:
+        L.append(f"  - ERROR `{e['test_id']}`: {e['error']}")
     L.append(f"- Governance invariants held on every case: **{'YES' if summary['invariants_held'] else 'NO'}** "
              "(decline rules always win; the model never approves over a rule; every reason code is traceable).")
     ac = summary["audit_chain"]
@@ -129,9 +157,9 @@ def render_markdown(summary: Dict[str, Any], runs: List[Dict[str, Any]]) -> str:
     L.append("")
 
     L.append("## 4. Decision confusion matrix (expected rows x actual columns)\n")
-    labels = ["APPROVE", "REFER", "DECLINE"]
+    labels = ["APPROVE", "REFER", "DECLINE", "ERROR"]
     L.append("| expected \\ actual | " + " | ".join(labels) + " |\n|---|" + "---:|" * len(labels))
-    for e in labels:
+    for e in labels[:3]:
         row = summary["decision_confusion"].get(e, {})
         L.append(f"| **{e}** | " + " | ".join(str(row.get(a, 0)) for a in labels) + " |")
     L.append("")
@@ -143,6 +171,15 @@ def render_markdown(summary: Dict[str, Any], runs: List[Dict[str, Any]]) -> str:
             L.append(f"| `{q}` | {c['correct']} | {c['total']} | {_pct(c['correct'], c['total'])} |")
     L.append("\n*Small labelled set - indicative only. Use `reports/laya_eval_dataset.jsonl` with "
              "`laya-evals` and grow it into a fine-tuning set before drawing accuracy conclusions.*\n")
+
+    L.append("### Model behaviour per typed question (all cases)\n")
+    L.append(f"Gate threshold `answer_confidence < {summary['run'].get('min_confidence')}` = abstained. "
+             "Read this before the pass rate: many abstentions mean the model is uncertain (uncalibrated or "
+             "not fine-tuned for this domain), not that the engine is wrong.\n")
+    L.append("| Question | Answers | Mean conf. | Min conf. | Abstained | Flagged |\n|---|---:|---:|---:|---:|---:|")
+    for q, d in summary["question_diagnostics"].items():
+        L.append(f"| `{q}` | {d['n']} | {d['mean_confidence']} | {d['min_confidence']} | {d['abstained']} | {d['flagged']} |")
+    L.append("")
 
     L.append("## 6. Latency (ms per decision, this machine)\n")
     L.append("| Stage | p50 | p95 | max |\n|---|---:|---:|---:|")
@@ -190,8 +227,8 @@ def to_eval_rows(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         exp = r["meta"].get("expected_answers") or {}
         if not exp:
             continue
-        state = r["result"]["model_input"]
+        state = r["result"]["model_input"]["state"]
         lang = "en" if json.dumps(state, ensure_ascii=False).isascii() else "multi"
-        rows.append({"state": state, "questions": r["questions"], "expected": exp,
+        rows.append({"state": state, "questions": r["result"]["model_input"]["questions"], "expected": exp,
                      "tags": [r["meta"]["product_code"], r["meta"]["test_id"]], "language": lang})
     return rows

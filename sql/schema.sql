@@ -80,6 +80,7 @@ CREATE TABLE laya_question (
     criteria         JSONB,                           -- dict (choice) / list (score) / null (noul)
     rag_query        TEXT    NOT NULL,                -- what policy text this question needs
     refer_when       TEXT,                            -- e.g. "noul gte 0.5", "choice eq weak", "score gte 1.5"
+    gate_on_low_confidence BOOLEAN NOT NULL DEFAULT TRUE, -- low-confidence answer => REFER
     reason_code      TEXT,
     clause_ref       TEXT,
     policy_version   TEXT    NOT NULL,

@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-07T16:20:15+00:00",
+  "generated_at": "2026-10-08T08:00:19+00:00",
   "run": {
-    "backend": "mock",
-    "backend_version": "mock-1.0",
-    "checkpoint": "mock-heuristic",
-    "laya_revision": "UNPINNED",
+    "backend": "laya",
+    "backend_version": "0.4.0",
+    "checkpoint": "auto",
+    "laya_revision": "7b928d828b7b0e022f929d9bd2e44165aa270148",
     "model_registry_id": 1,
     "min_confidence": 0.7,
     "embedding": "hashing",
@@ -14,36 +14,112 @@
       "PL-2026.10",
       "TW-2026.10"
     ],
-    "host": "Linux x86_64 / Python 3.13.16"
+    "host": "Linux x86_64 / Python 3.14.6"
   },
   "totals": {
     "cases": 20,
-    "passed": 20,
-    "failed": 0
+    "passed": 15,
+    "failed": 5,
+    "errors": 0
+  },
+  "errors": [],
+  "question_diagnostics": {
+    "adverse_conduct": {
+      "n": 10,
+      "mean_confidence": 0.803,
+      "min_confidence": 0.614,
+      "abstained": 1,
+      "flagged": 1
+    },
+    "debtor_quality": {
+      "n": 5,
+      "mean_confidence": 0.849,
+      "min_confidence": 0.669,
+      "abstained": 1,
+      "flagged": 1
+    },
+    "document_inconsistency": {
+      "n": 15,
+      "mean_confidence": 0.824,
+      "min_confidence": 0.683,
+      "abstained": 1,
+      "flagged": 0
+    },
+    "early_warning": {
+      "n": 5,
+      "mean_confidence": 0.639,
+      "min_confidence": 0.622,
+      "abstained": 4,
+      "flagged": 5
+    },
+    "invoice_quality_issue": {
+      "n": 5,
+      "mean_confidence": 0.846,
+      "min_confidence": 0.744,
+      "abstained": 0,
+      "flagged": 1
+    },
+    "manipulation_attempt": {
+      "n": 20,
+      "mean_confidence": 0.859,
+      "min_confidence": 0.773,
+      "abstained": 0,
+      "flagged": 2
+    },
+    "name_lender_risk": {
+      "n": 5,
+      "mean_confidence": 0.858,
+      "min_confidence": 0.741,
+      "abstained": 0,
+      "flagged": 0
+    },
+    "purpose_prohibited": {
+      "n": 10,
+      "mean_confidence": 0.784,
+      "min_confidence": 0.705,
+      "abstained": 0,
+      "flagged": 0
+    },
+    "risk_grade": {
+      "n": 20,
+      "mean_confidence": 0.631,
+      "min_confidence": 0.455,
+      "abstained": 13,
+      "flagged": 0
+    },
+    "usage_type": {
+      "n": 5,
+      "mean_confidence": 0.776,
+      "min_confidence": 0.595,
+      "abstained": 1,
+      "flagged": 1
+    }
   },
   "by_product": {
     "PL": {
       "total": 10,
-      "passed": 10
+      "passed": 8
     },
     "MSME_RF": {
       "total": 5,
-      "passed": 5
+      "passed": 4
     },
     "TW": {
       "total": 5,
-      "passed": 5
+      "passed": 3
     }
   },
   "decision_confusion": {
     "APPROVE": {
-      "APPROVE": 5
+      "APPROVE": 3,
+      "REFER": 2
     },
     "DECLINE": {
       "DECLINE": 5
     },
     "REFER": {
-      "REFER": 10
+      "REFER": 7,
+      "APPROVE": 3
     }
   },
   "question_accuracy": {
@@ -56,7 +132,7 @@
       "total": 2
     },
     "early_warning": {
-      "correct": 1,
+      "correct": 0,
       "total": 1
     },
     "invoice_quality_issue": {
@@ -68,11 +144,11 @@
       "total": 2
     },
     "name_lender_risk": {
-      "correct": 3,
+      "correct": 2,
       "total": 3
     },
     "purpose_prohibited": {
-      "correct": 3,
+      "correct": 2,
       "total": 3
     },
     "usage_type": {
@@ -80,33 +156,33 @@
       "total": 1
     }
   },
-  "abstentions": 1,
+  "abstentions": 21,
   "latency_ms": {
     "rules": {
-      "p50": 0.47,
-      "p95": 1.72,
-      "max": 3.54
+      "p50": 14.02,
+      "p95": 27.66,
+      "max": 72.76
     },
     "rag": {
-      "p50": 3.96,
-      "p95": 5.76,
-      "max": 18.97
+      "p50": 29.12,
+      "p95": 41.46,
+      "max": 58.26
     },
     "model": {
-      "p50": 0.23,
-      "p95": 0.25,
-      "max": 0.27
+      "p50": 16004.2,
+      "p95": 17656.14,
+      "max": 17717.39
     },
     "total": {
-      "p50": 4.67,
-      "p95": 6.87,
-      "max": 22.78
+      "p50": 16059.71,
+      "p95": 17698.86,
+      "max": 17762.75
     }
   },
   "audit_chain": {
     "valid": true,
     "rows": 20,
-    "head_hash": "8840c9e4f2944e1f2e2fe6e6bbac9f9c7a30111b843a5d1925bec4b4612705a4"
+    "head_hash": "313e932e85fdfcbe6bb23e8cadd88fb886d9a0504c8894a0f3985fa74576608e"
   },
   "pii_leak_findings": [],
   "invariants_held": true

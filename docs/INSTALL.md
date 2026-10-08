@@ -6,7 +6,7 @@ Tested on Linux (Ubuntu 22.04/24.04) and macOS. Windows works via the PowerShell
 
 | Need | Version | Check |
 |---|---|---|
-| Python | 3.10 – 3.13 (Laya requires ≥ 3.10) | `python3 --version` |
+| Python | 3.10 or newer (tested up to 3.14) | `python3 --version` |
 | PostgreSQL + pgvector | PostgreSQL 16, pgvector ≥ 0.6 | via Docker (recommended) or native |
 | Docker (optional) | any recent | `docker --version` |
 | Disk / RAM | ~3 GB for torch + one checkpoint (~0.8 GB); 4 GB RAM minimum | |
@@ -88,6 +88,31 @@ The checkpoint downloads automatically on the first decision. To do it explicitl
 ```bash
 python -I -c "from laya import Router; r = Router(default='english'); \
 print(r.predict('warm-up', {'q': {'type': 'noul', 'instructions': 'Is this a test?'}})['routing'])"
+```
+
+With `LAYA_MODEL=auto` the engine also needs the **multilingual** checkpoint (test `TW_05` is in Hindi). Download both before going offline — use the same revision you pin in `.env`:
+
+```bash
+python -I -c "from laya import Router; Router(revision='<sha or leave empty>' or None).preload(['english', 'multilingual'])"
+```
+
+If you skip this and set `HF_HUB_OFFLINE=1`, the engine now stops at start-up with a message naming the missing checkpoint (earlier versions failed mid-run on the first Hindi case).
+
+Expected output: a dict starting `{'model': 'english', 'repo': 'convaiinnovations/laya', ...}`. That means the checkpoint loaded and answered.
+
+You will also see this warning, which is expected and harmless for this project:
+
+```
+RuntimeWarning: laya: this checkpoint ships invalid temperatures or values outside [0.5, 5];
+using choice:11+=0.10058280825614929 -> 0.5. Treat confidence from the affected entries as uncalibrated.
+```
+
+The shipped checkpoint carries an over-sharp calibration value for `choice` questions with **11 or more options**, and Laya clamps it on load. Every question in this engine has 2 or 3 options, so none of them use that value. Keep the warning visible rather than suppressing it: it is the kind of signal a model-risk reviewer should see.
+
+Record the exact checkpoint revision you just validated and pin it in `.env` (`LAYA_REVISION=<sha>`):
+
+```bash
+ls ~/.cache/huggingface/hub/models--convaiinnovations--laya/snapshots/
 ```
 
 The English checkpoint is roughly 0.8 GB. It is cached in `~/.cache/huggingface` (move it with `HF_HUB_CACHE`).

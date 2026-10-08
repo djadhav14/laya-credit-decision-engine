@@ -29,7 +29,6 @@ from psycopg.types.json import Jsonb  # noqa: E402
 
 from laya_credit.config import get_settings  # noqa: E402
 from laya_credit.embeddings import build_embedder  # noqa: E402
-from laya_credit.engine import PolicyRepository  # noqa: E402
 from laya_credit.policy_store import PolicyStore, chunk_policy  # noqa: E402
 from laya_credit.registry import ModelRegistry  # noqa: E402
 
@@ -81,12 +80,13 @@ def load_questions(conn, products: dict) -> None:
             continue
         for q in questions:
             conn.execute("""INSERT INTO laya_question (product_code, qid, qtype, instructions,
-                              criteria, rag_query, refer_when, reason_code, clause_ref, policy_version)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                              criteria, rag_query, refer_when, gate_on_low_confidence, reason_code,
+                              clause_ref, policy_version)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                          (product_code, q["qid"], q["qtype"], q["instructions"],
                           Jsonb(q["criteria"]) if q["criteria"] is not None else None,
-                          q["rag_query"], q["refer_when"], q["reason_code"], q["clause_ref"],
-                          products[product_code]["policy_version"]))
+                          q["rag_query"], q["refer_when"], q.get("gate_on_low_confidence", True),
+                          q["reason_code"], q["clause_ref"], products[product_code]["policy_version"]))
             n += 1
     print(f"  {n} Laya typed questions")
 
@@ -336,15 +336,24 @@ SCENARIOS = [
 ]
 
 
-def write_tests(conn) -> None:
-    repo = PolicyRepository(conn)
+def write_tests(conn, settings) -> None:
+    """Writes each case with the EXACT question set the engine sends to Laya (policy-grounded),
+    so `request` can also be posted as-is to laya-serve for comparison."""
+    from laya_credit.backends import MockBackend
+    from laya_credit.engine import DecisionEngine
+
+    store = PolicyStore(conn, build_embedder(settings.embedding_provider, settings.embedding_model))
+    engine = DecisionEngine(conn, settings, MockBackend(), store)
+    repo = engine.repo
     out = ROOT / "tests" / "cases"
     out.mkdir(parents=True, exist_ok=True)
     for old in out.glob("*.json"):
         old.unlink()
     for tid, desc, state, decision, reasons, answers in SCENARIOS:
         state = dict(state, applicant_ref=tid)
-        questions = repo.to_laya_questions(repo.load(state["product_code"])["questions"])
+        bundle = repo.load(state["product_code"])
+        questions, _ = engine.grounded_questions(state["product_code"],
+                                                 bundle["product"]["policy_version"], bundle["questions"])
         doc = {"meta": {"test_id": tid, "description": desc, "product_code": state["product_code"],
                         "expected_decision": decision, "expected_reason_codes": reasons,
                         "expected_answers": answers},
@@ -381,7 +390,7 @@ def main() -> None:
         generate_pool(conn, args.applicants, args.seed)
         print("[6/6] Test cases")
         if args.write_tests:
-            write_tests(conn)
+            write_tests(conn, settings)
         else:
             print("  skipped (use --write-tests to regenerate tests/cases)")
     print("Done.")
